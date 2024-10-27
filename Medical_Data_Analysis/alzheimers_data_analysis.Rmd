@@ -1,0 +1,27 @@
+---
+title: "Alzheimers Data Analysis"
+author: "Kai Wilson"
+date: "2024-10-27"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+```
+
+## R Markdown
+
+
+```{r Data Analysis, echo=TRUE}
+
+```
+
+
+
+```{r pressure, echo=TRUE}
+
+```
+
+
