@@ -1,0 +1,520 @@
+---
+title: "Stroke Data Analysis"
+author: "Kai Wilson"
+date: "2024-10-28"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+library(cluster)    # For clustering algorithms
+library(factoextra) # For clustering visualization
+```
+
+## Stroke Data Analysis 
+
+In this project, I obtained this dataset from [Kaggle](https://www.kaggle.com/datasets/fedesoriano/stroke-prediction-dataset?resource=download).The data is based on people that have and haven't had a stroke. The dataset was used for training a model to make predictions if a person is likely to have a stoke. 
+
+The data is based on people that have and haven't had a stroke. The dataset was used for training a model to make predictions if a person is likely to have a stroke.
+
+
+After I collected the data, cleaned it, and put it into a SQLite database. For the database schema, I made one table for person and another table for their medical history.
+
+
+I queried the data through joining the two tables and completing my analysis. After I did three queries, I turned them into their own CSV files to quickly graph the data using ggplot. Taking a step further, I created two K-means clusters: one focusing on just the medical history and another with medical history based on gender.
+
+
+All code can be found on my [github](https://github.com/Kwilso3412/medical_data_analysis): https://github.com/Kwilso3412/medical_data_analysis
+
+
+
+
+## Totals
+
+
+
+
+
+Had a Stroke: 249 
+
+
+Havent had a Stroke: 4861\
+ 
+ 
+ 
+ 
+Men that have had a stroke: 108 
+
+
+Men married had stroke: 100\
+
+
+
+ 
+Women that have had a stroke: 141 
+
+Women married had stroke: 120 
+
+
+```{r Glucose, echo=FALSE, warning=FALSE, message=FALSE}
+glucose = read.csv("glucose.csv")
+# Remove N/A values 
+glucose = filter(glucose, !grepl("Other", gender))
+glucose$age_group = cut(glucose$age, breaks = seq(0, 90, by = 5))  # group by 5-year intervals
+avg_by_group = aggregate(avg_glucose_level ~ age_group + gender, data = glucose, FUN = mean)
+
+
+ggplot(avg_by_group, aes(x = age_group, y = avg_glucose_level, color = gender)) +
+  geom_point(size = 3) +
+  geom_smooth(method = "lm", se = FALSE) +
+  theme_minimal() +
+  labs(title = "Age vs. Glucose Level by Gender",
+       x = "Age",
+       y = "Average Glucose Level") +
+  scale_color_manual(values = c("Female" = "pink", "Male" = "lightblue")) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),  # Adjust text angle and position
+    plot.margin = margin(b = 40, l = 40),  # Add margin at bottom
+    aspect.ratio = 0.5  # Make plot wider (decrease for wider plot)
+  ) +
+  coord_cartesian(expand = TRUE)  # Expand the plot area
+
+```
+The graph shows that blood glucose levels tend to increase with age for both men and women. While levels stay fairly stable until age 30, they begin rising after that, with a sharper increase after age 50. Men (blue line) generally show higher glucose levels than women (pink line), with this difference becoming more noticeable in older age groups, particularly after age 60.
+
+
+
+```{r BMI, echo=FALSE, warning=FALSE}
+bmi = read.csv("bmi.csv")
+bmi = filter(bmi, !grepl("N/A", bmi))
+bmi = filter(bmi, !grepl("Other", gender))
+bmi$age_group = cut(bmi$age, breaks = seq(0, 90, by = 5))  # group by 5-year intervals
+avg_by_group = aggregate(bmi ~ age_group + gender, data = bmi, FUN = mean)
+bmi$age = round(bmi$age, 1)
+
+
+ggplot(avg_by_group, aes(x = age_group, y = bmi, color = gender, group = gender)) +
+  geom_line() +
+  geom_point() +
+  theme_minimal() +
+  labs(title = "Chance of Stroke by BMI",
+       x = "Age Group",
+       y = "Average BMI") +
+  scale_color_manual(values = c("Female" = "pink", "Male" = "lightblue")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # rotate x-axis labels
+```
+This graph shows the relationship between age and BMI (body mass index) for men and women. BMI increases with age until around 45-50 years old, then gradually decreases in later years. Both genders follow similar patterns, with slight variations but no major differences between men and women.
+
+
+
+```{r Residence, echo=FALSE, warning=FALSE}
+residence = read.csv("residence.csv")
+residence = filter(residence, !grepl("Other", gender))
+residence$age = round(residence$age, 1)
+residence$age_group = cut(residence$age, breaks = seq(0, 90, by = 5))  # group by 5-year intervals
+
+
+ggplot(residence, aes(x = residence_type, y = age, fill = gender)) +
+  geom_bar(stat = "summary", fun = "mean", position = "dodge") +
+  theme_minimal() +
+  labs(title = "Average Age by Residence Type and Gender",
+       x = "Residence Type",
+       y = "Average Age") +
+  scale_fill_manual(values = c("Female" = "pink", "Male" = "lightblue")) +
+  stat_summary(fun = mean, geom = "text", 
+              aes(label = round(..y.., 1)), 
+              position = position_dodge(width = 0.9),
+              vjust = -0.5)
+
+```
+This graph shows the average age of people living in rural versus urban areas, broken down by gender. The differences are small, but urban women have the highest average age (44.2 years), while rural men have the lowest (42.4 years). Women in both locations are slightly older on average than men.
+
+
+\newpage
+## Clustering Based on Medical History
+
+
+
+Cluster 1 (Red):
+
+Primarily young individuals (average age ~29.4)
+Healthy BMI range (~25.6)
+Normal glucose levels (~98.2)
+Very low rates of hypertension (2.6%) and heart disease (2.3%)
+All marked as unknown smoking status
+Represents the "healthy young adult" group
+
+Cluster 2 (Blue):
+
+Oldest group (average age ~51.2)
+Highest BMI (30.7, classified as obese)
+Highest glucose levels (~109.8)
+Highest rates of hypertension (12.4%) and heart disease (8.1%)
+Mixed smoking status: 53% former smokers, 46.7% current smokers
+Represents the "high-risk" group
+
+Cluster 3 (Green):
+
+Middle-aged group (average age ~46.5)
+Elevated BMI (30.0, borderline obese)
+Elevated glucose levels (~107.1)
+Moderate hypertension (11.7%) and heart disease (4.4%)
+All never-smokers
+Represents the "moderate-risk" group\
+
+```{r Kmeans Cluster numeric, echo=FALSE, warning=FALSE}
+full_data = read.csv("healthcare_dataset_stroke_data.csv", na.strings = c("", "NA", "N/A"))
+full_data = filter(full_data, !grepl("Other", gender))
+# Create dummy variables using model.matrix
+smoking_dummies = model.matrix(~ smoking_status - 1, data = full_data)
+# Convert to data frame
+smoking_df = as.data.frame(smoking_dummies)
+# Clean up column names
+names(smoking_df) = gsub("smoking_status", "", names(smoking_df))
+names(smoking_df) = gsub("`", "", names(smoking_df))
+names(smoking_df) = gsub(" ", "_", names(smoking_df))
+
+# Remove original smoking_status column and add dummy columns
+full_data = cbind(full_data[, !names(full_data) %in% "smoking_status"], smoking_df)
+
+full_data$age = round(full_data$age, 1)
+full_data$age_group = cut(full_data$age, breaks = seq(0, 90, by = 5))
+
+numeric_clustering = function(full_data) {
+    numeric_data = full_data[, c("age", "avg_glucose_level", "bmi","hypertension","heart_disease","formerly_smoked","never_smoked","smokes","Unknown")]
+    complete_data = na.omit(numeric_data)
+    scaled_data = scale(complete_data)
+    wss = numeric(10)
+    for(i in 1:10) {
+        km <- kmeans(scaled_data, centers = i, nstart = 25)
+        wss[i] = km$tot.withinss
+    }
+    
+    k = 3 
+    km_result = kmeans(scaled_data, centers = k, nstart = 25)
+    result_data = full_data
+    result_data$numeric_cluster = NA
+    complete_rows = complete.cases(numeric_data)
+    result_data$numeric_cluster[complete_rows] <- km_result$cluster
+    
+    return(list(
+        clusters = km_result,
+        data = result_data,
+        n_excluded = sum(!complete_rows)
+    ))
+}
+
+results = numeric_clustering(full_data)
+numeric_clustering = function(full_data) {
+    numeric_data = full_data[, c("age", "avg_glucose_level", "bmi","hypertension","heart_disease","formerly_smoked","never_smoked","smokes","Unknown")]
+    complete_data = na.omit(numeric_data)
+    scaled_data <- scale(complete_data)
+    wss = numeric(10)
+    for(i in 1:10) {
+        km = kmeans(scaled_data, centers = i, nstart = 25)
+        wss[i] = km$tot.withinss
+    }
+    k <- 3 
+    km_result = kmeans(scaled_data, centers = k, nstart = 25)
+    result_data = full_data
+    result_data$numeric_cluster = NA
+    complete_rows = complete.cases(numeric_data)
+    result_data$numeric_cluster[complete_rows] = km_result$cluster
+    
+    return(list(
+        clusters = km_result,
+        data = result_data,
+        n_excluded = sum(!complete_rows)
+    ))
+}
+results = numeric_clustering(full_data)
+cluster_summary = aggregate(
+    cbind(
+        count = 1,
+        age = results$data$age,
+        avg_glucose_level = results$data$avg_glucose_level,
+        bmi = results$data$bmi,
+        hypertension = results$data$hypertension,
+        heart_disease = results$data$heart_disease,
+        formerly_smoked = results$data$formerly_smoked,
+        never_smoked = results$data$never_smoked,
+        smokes = results$data$smokes,
+        Unknown = results$data$Unknown
+    ),
+    by = list(cluster = results$data$numeric_cluster),
+    FUN = function(x) if(length(x) == 1) length(x) else mean(x, na.rm = TRUE)
+)
+print("Cluster Summary Statistics:")
+print(cluster_summary)
+
+```
+\newpage
+```{r Kmeans Cluster Age vs BMI, echo=FALSE, warning=FALSE}
+p1 = ggplot(results$data, aes(x=age, y=bmi, color=factor(numeric_cluster))) +
+    geom_point(alpha=0.6) +
+    theme_minimal() +
+    labs(title="Clustering Results: Age vs BMI",
+         x="Age",
+         y="BMI",
+         color="Cluster") +
+    scale_color_brewer(palette="Set1")
+print(p1)
+
+```
+\
+
+
+Age vs BMI:
+
+
+Shows clear age-related BMI increases
+Younger cluster (1) maintains healthier BMI range
+More variation in BMI as age increases
+
+
+```{r Kmeans Cluster glucose vs BMI, echo=FALSE, warning=FALSE}
+p2 = ggplot(results$data, aes(x=bmi, y=avg_glucose_level, color=factor(numeric_cluster))) +
+    geom_point(alpha=0.6) +
+    theme_minimal() +
+    labs(title="Clustering Results: BMI vs Glucose Level",
+         x="BMI",
+         y="Average Glucose Level",
+         color="Cluster") +
+    scale_color_brewer(palette="Set1")
+print(p2)
+
+```
+\
+
+
+BMI vs Glucose Level:
+
+
+Shows positive correlation between BMI and glucose levels
+Higher BMI associated with more variable glucose levels
+Clear separation between healthy (Cluster 1) and at-risk groups (Clusters 2 and 3)
+
+
+```{r Kmeans Cluster Age vs glucose, echo=FALSE, warning=FALSE}
+
+p3 = ggplot(results$data, aes(x=age, y=avg_glucose_level, color=factor(numeric_cluster))) +
+    geom_point(alpha=0.6) +
+    theme_minimal() +
+    labs(title="Clustering Results: Age vs Glucose Level",
+         x="Age",
+         y="Average Glucose Level",
+         color="Cluster") +
+    scale_color_brewer(palette="Set1")
+print(p3)
+
+```
+\
+
+
+Age vs Glucose Level:
+
+
+Strong positive correlation between age and glucose levels
+More scattered/variable glucose levels in older age groups
+Cluster 1 (young) shows tighter grouping of normal glucose levels
+
+
+
+### In Summary
+
+Age is a strong determining factor in health outcomes
+Risk factors tend to cluster together (high BMI, glucose, hypertension, heart disease)
+Smoking status appears to be an important discriminating factor between clusters
+Clear progression from healthy young adults to higher-risk older adults
+Potential for early intervention in younger populations to prevent progression to higher-risk clusters
+\newpage
+
+## Clustering Based on Gender: Gender Distribution in Clusters
+
+Cluster 1:
+
+More balanced gender distribution
+Approximately 750 females and 600 males
+This was the "younger, healthier" cluster with lower BMI, lower glucose levels, and minimal health risks
+
+Cluster 2:
+
+Predominantly male
+Approximately 1400 males
+Very few or no females
+This represented the "higher risk" group with higher BMI, glucose levels, and cardiovascular risks
+
+Cluster 3:
+
+Predominantly female
+Approximately 2000 females
+Very few or no males
+This represented the female equivalent of Cluster 2, with similar age and health risk patterns\
+
+
+```{r Kmeans Cluster by gender distribution, echo=FALSE, warning=FALSE}
+gender_clustering = function(full_data) {
+    gender_dummy = model.matrix(~ gender - 1, data = full_data)
+    numeric_data = full_data[, c("age", "avg_glucose_level", "bmi",
+                                 "hypertension", "heart_disease",
+                                 "formerly_smoked", "never_smoked",
+                                 "smokes", "Unknown")]
+    combined_data = cbind(numeric_data, gender_dummy)
+    complete_data = na.omit(combined_data)
+    scaled_data = scale(complete_data)
+    wss = numeric(10)
+    for(i in 1:10) {
+        km = kmeans(scaled_data, centers = i, nstart = 25)
+        wss[i] = km$tot.withinss
+    }
+    k = 3  
+    km_result = kmeans(scaled_data, centers = k, nstart = 25)
+    result_data = full_data
+    result_data$numeric_cluster = NA
+    complete_rows = complete.cases(combined_data)
+    result_data$numeric_cluster[complete_rows] = km_result$cluster
+    return(list(
+        clusters = km_result,
+        data = result_data,
+        n_excluded = sum(!complete_rows)
+    ))
+}
+
+results = gender_clustering(full_data)
+filtered_data = subset(results$data, !is.na(numeric_cluster))
+cluster_summary = aggregate(
+    data.frame(count = rep(1, nrow(filtered_data))),
+    by = list(
+        numeric_cluster = filtered_data$numeric_cluster,
+        gender = filtered_data$gender
+    ),
+    FUN = sum
+)
+
+gender_dist = ggplot(cluster_summary, 
+                     aes(x=factor(numeric_cluster),
+                         y=count, 
+                         fill=gender)) +
+    geom_bar(stat="identity", position="dodge") +
+    theme_minimal() +
+    labs(title="Gender Distribution by Cluster",
+         x="Cluster",
+         y="Count",
+         fill="Gender") +
+    scale_fill_brewer(palette="Set2")
+print(gender_dist)
+
+```
+This visualization reveals that the clustering algorithm effectively separated the middle-aged/higher risk population by gender (Clusters 2 and 3), while keeping younger, healthier individuals of both genders together in Cluster 1. This gender segregation in the higher-risk clusters might be useful for developing targeted health interventions specific to each gender's risk patterns.
+\newpage
+
+## Clustering Based on Gender
+
+Cluster 1:
+
+Predominantly younger individuals (Female avg: 29.4 years, Male avg: 22.2 years)
+Lower BMI (Female: 25.3, Male: 23.9) - both in the normal/slightly overweight range
+Lower glucose levels (Female: 94.6, Male: 93.5) - both within normal range
+Very low rates of hypertension and heart disease (<1%)
+All marked as "Unknown" for smoking status (unknown_mean = 1)
+Represents the healthiest cluster overall
+
+Cluster 2/3 (higher risk group):
+Females (Cluster 3):
+
+Middle-aged (avg: 48.4 years)
+Higher BMI (30.4) - in the obese range
+Elevated glucose (106.5)
+Higher rates of hypertension (11.6%) and heart disease (4.6%)
+Mixed smoking status: 21.4% formerly smoked, 56.3% never smoked, 19.9% current smokers
+
+Males (Cluster 2):
+
+Slightly older (avg: 50.5 years)
+Similar BMI (30.7) - also in obese range
+Highest glucose levels (114.3)
+Highest rates of hypertension (14.1%) and heart disease (10%)
+Different smoking pattern: 26.8% formerly smoked, 45.9% never smoked, 22.1% current smokers\
+
+```{r Kmeans Cluster by gender, echo=FALSE, warning=FALSE}
+clustered_data <- results$data
+cluster_summary <- aggregate(
+    cbind(
+        n = 1,
+        age = clustered_data$age,
+        avg_glucose_level = clustered_data$avg_glucose_level,
+        bmi = clustered_data$bmi,
+        hypertension = clustered_data$hypertension,
+        heart_disease = clustered_data$heart_disease,
+        formerly_smoked = clustered_data$formerly_smoked,
+        never_smoked = clustered_data$never_smoked,
+        smokes = clustered_data$smokes,
+        Unknown = clustered_data$Unknown
+    ),
+    by = list(
+        cluster = clustered_data$numeric_cluster,
+        gender = clustered_data$gender
+    ),
+    FUN = function(x) if(length(x) == 1) length(x) else mean(x, na.rm = TRUE)
+)
+
+names(cluster_summary) <- c("cluster", "gender", "count", 
+                          "age_mean", "glucose_mean", "bmi_mean",
+                          "hypertension_mean", "heart_disease_mean",
+                          "formerly_smoked_mean", "never_smoked_mean",
+                          "smokes_mean", "unknown_mean")
+
+cluster_summary <- cluster_summary[!is.na(cluster_summary$cluster), ]
+
+print("Cluster Summary Statistics by Gender:")
+print(cluster_summary)
+```
+
+
+
+```{r Kmeans Cluster by gender age bmi, echo=FALSE, warning=FALSE}
+
+p1 <- ggplot(results$data, aes(x=age, y=bmi, color=factor(numeric_cluster), shape=gender)) +
+    geom_point(alpha=0.6) +
+    theme_minimal() +
+    labs(title="Clustering Results: Age vs BMI by Gender",
+         x="Age",
+         y="BMI",
+         color="Cluster",
+         shape="Gender") +
+    scale_color_brewer(palette="Set1")
+print(p1)
+
+```
+This scatter plot shows two main clusters in the Age vs BMI relationship:
+Cluster 1 (red) shows younger people (mostly under 40) with lower BMI ranges (mostly between 20-30), suggesting a healthier weight group.
+Cluster 2 (green) shows a wider age range with higher BMI values (mostly between 25-40), suggesting an overweight/obese group across different ages.
+The pattern suggests that while younger people tend to have lower BMI, there's more variation in BMI as age increases, with some people maintaining healthy weights while others show higher BMI values.
+
+
+
+```{r Kmeans Cluster by gender age glucose, echo=FALSE, warning=FALSE}
+p2 <- ggplot(results$data, aes(x=age, y=avg_glucose_level, color=factor(numeric_cluster), shape=gender)) +
+    geom_point(alpha=0.6) +
+    theme_minimal() +
+    labs(title="Clustering Results: Age vs Glucose Level by Gender",
+         x="Age",
+         y="Average Glucose Level",
+         color="Cluster",
+         shape="Gender") +
+    scale_color_brewer(palette="Set1")
+print(p2)
+
+```
+This scatter plot shows Age vs Glucose Levels clustered into two main groups:
+Cluster 1 (red) shows people with normal glucose levels (mostly between 60-120), appearing more commonly in younger ages.
+Cluster 2 (green) shows elevated glucose levels (above 120), becoming more common with increasing age, possibly indicating pre-diabetic or diabetic ranges.
+The pattern suggests that glucose levels tend to increase with age, and older individuals are more likely to have higher glucose readings. The separation between clusters could help identify potential diabetes risk groups across age ranges.
+
+
+### In Summary
+
+
+The data shows clear age-related clustering and notable gender differences in health risks, with males showing higher glucose levels and cardiovascular risks. There are similar BMI patterns across genders within the same age groups. Risk factors tend to cluster together, as higher age correlates with higher BMI and glucose levels. Additionally, smoking status varies significantly by both age group and gender.
