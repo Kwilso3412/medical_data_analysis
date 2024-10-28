@@ -17,8 +17,6 @@ library(factoextra) # For clustering visualization
 
 In this project, I obtained this dataset from [Kaggle](https://www.kaggle.com/datasets/fedesoriano/stroke-prediction-dataset?resource=download).The data is based on people that have and haven't had a stroke. The dataset was used for training a model to make predictions if a person is likely to have a stoke. 
 
-The data is based on people that have and haven't had a stroke. The dataset was used for training a model to make predictions if a person is likely to have a stroke.
-
 
 After I collected the data, cleaned it, and put it into a SQLite database. For the database schema, I made one table for person and another table for their medical history.
 
